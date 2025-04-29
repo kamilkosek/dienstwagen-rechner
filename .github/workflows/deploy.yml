@@ -36,7 +36,11 @@ jobs:
           node-version: 20
           cache: 'npm'
       - name: Install dependencies
-        run: npm ci
+        # Use a more robust installation approach to handle Rollup's optional dependencies
+        run: |
+          npm clean-install --force
+          # Explicitly install the platform-specific Rollup dependency
+          npm install @rollup/rollup-linux-x64-gnu --no-save
       - name: Build
         run: npm run build
       - name: Setup Pages
