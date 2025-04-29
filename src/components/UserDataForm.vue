@@ -326,7 +326,7 @@ const kirchensteuer = computed(() => {
 
 // Get solidarity surcharge from calculator
 const soli = computed(() => {
-  return store.calculateSolidaritaetszuschlag(einkommensteuer.value)
+  return store.calculateSolidaritaetszuschlag()
 })
 
 // Get social security contributions from calculator

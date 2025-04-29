@@ -5,27 +5,27 @@
         <h2>{{ isEditMode ? 'Profil bearbeiten' : 'Neues Profil erstellen' }}</h2>
         <button class="close-button" @click="close">×</button>
       </div>
-      
+
       <div class="modal-body">
         <div class="form-group">
           <label for="profile-name">Profilname</label>
-          <input 
-            id="profile-name" 
-            type="text" 
+          <input
+            id="profile-name"
+            type="text"
             v-model="profileName"
             placeholder="z.B. Aktuelles Gehalt, Beförderungsgehalt, etc."
             required
           />
         </div>
-        
+
         <!-- When editing, show the form with profile data -->
         <div v-if="isEditMode" class="user-data-form">
           <div class="form-group">
             <label for="brutto">Bruttomonatsgehalt (€)</label>
-            <input 
-              id="brutto" 
-              type="number" 
-              v-model.number="formData.bruttoMonatsgehalt" 
+            <input
+              id="brutto"
+              type="number"
+              v-model.number="formData.bruttoMonatsgehalt"
               min="0"
               step="100"
               required
@@ -34,8 +34,8 @@
 
           <div class="form-group">
             <label for="steuerklasse">Steuerklasse</label>
-            <select 
-              id="steuerklasse" 
+            <select
+              id="steuerklasse"
               v-model.number="formData.steuerklasse"
               required
             >
@@ -50,8 +50,8 @@
 
           <div class="form-group">
             <label for="bundesland">Bundesland</label>
-            <select 
-              id="bundesland" 
+            <select
+              id="bundesland"
               v-model="formData.bundesland"
               required
             >
@@ -76,9 +76,9 @@
 
           <div class="form-group">
             <label for="steuerjahr">Steuerjahr</label>
-            <input 
-              id="steuerjahr" 
-              type="number" 
+            <input
+              id="steuerjahr"
+              type="number"
               v-model.number="formData.steuerjahr"
               min="2023"
               max="2030"
@@ -88,9 +88,9 @@
 
           <div class="form-group">
             <label for="geburtsjahr">Geburtsjahr</label>
-            <input 
-              id="geburtsjahr" 
-              type="number" 
+            <input
+              id="geburtsjahr"
+              type="number"
               v-model.number="formData.geburtsjahr"
               min="1940"
               max="2006"
@@ -100,20 +100,24 @@
 
           <div class="form-group">
             <label for="kinder">Anzahl Kinderfreibeträge</label>
-            <input 
-              id="kinder" 
-              type="number" 
+            <input
+              id="kinder"
+              type="number"
               v-model.number="formData.kinderfreibetraege"
               min="0"
               step="0.5"
             />
+            <small class="info-text">
+              Hinweis: Kinderfreibeträge beeinflussen nur die Kirchensteuer, nicht die Lohnsteuer.
+              Sie reduzieren jedoch die Pflegeversicherungsbeiträge und damit das Nettogehalt.
+            </small>
           </div>
 
           <div class="form-group">
             <label for="monatsfreibetrag">Monatsfreibetrag (€)</label>
-            <input 
-              id="monatsfreibetrag" 
-              type="number" 
+            <input
+              id="monatsfreibetrag"
+              type="number"
               v-model.number="formData.monatsfreibetrag"
               min="0"
               step="10"
@@ -121,21 +125,21 @@
           </div>
 
           <div class="form-group checkbox">
-            <input 
-              id="kirchensteuer" 
-              type="checkbox" 
+            <input
+              id="kirchensteuer"
+              type="checkbox"
               v-model="formData.kirchensteuer"
             />
             <label for="kirchensteuer">Kirchensteuer</label>
           </div>
 
           <h3>Vorsorgeaufwendungen</h3>
-          
+
           <div class="form-group">
             <label for="rentenversicherung">Rentenversicherung (%)</label>
-            <input 
-              id="rentenversicherung" 
-              type="number" 
+            <input
+              id="rentenversicherung"
+              type="number"
               v-model.number="formData.vorsorgeaufwendungen.rentenversicherung"
               min="0"
               step="0.1"
@@ -145,9 +149,9 @@
 
           <div class="form-group">
             <label for="krankenversicherung">Krankenversicherung (%)</label>
-            <input 
-              id="krankenversicherung" 
-              type="number" 
+            <input
+              id="krankenversicherung"
+              type="number"
               v-model.number="formData.vorsorgeaufwendungen.krankenversicherung"
               min="0"
               step="0.1"
@@ -157,9 +161,9 @@
 
           <div class="form-group">
             <label for="zusatzbeitrag">Zusatzbeitragssatz (%)</label>
-            <input 
-              id="zusatzbeitrag" 
-              type="number" 
+            <input
+              id="zusatzbeitrag"
+              type="number"
               v-model.number="formData.vorsorgeaufwendungen.zusatzbeitragssatz"
               min="0"
               step="0.1"
@@ -168,7 +172,7 @@
           </div>
         </div>
       </div>
-      
+
       <div class="modal-footer">
         <button class="btn secondary" @click="close">Abbrechen</button>
         <button class="btn primary" @click="save" :disabled="!isValid">Speichern</button>
@@ -247,7 +251,7 @@ const closeOnOverlay = (event: MouseEvent) => {
 // Save changes
 const save = () => {
   if (!isValid.value) return
-  
+
   if (isEditMode.value && props.profile) {
     // Update existing profile
     emit('save', {
@@ -372,6 +376,14 @@ const deleteProfile = () => {
 .btn:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+.info-text {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
 }
 
 /* Form styling */

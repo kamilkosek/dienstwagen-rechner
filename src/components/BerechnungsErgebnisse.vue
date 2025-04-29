@@ -86,7 +86,7 @@
                   :key="vergleich.dienstwagen.id"
                   :class="{'cheapest-car': isCheapestCar(vergleich.dienstwagen.bruttolistenpreis)}">
                 {{ vergleich.ergebnis.eigenanteilBetrag > 0
-                   ? formatCurrency(vergleich.ergebnis.eigenanteilBetrag) + ' / Monat'
+                   ? " - " + formatCurrency(vergleich.ergebnis.eigenanteilBetrag) + ' / Monat'
                    : '–' }}
               </td>
             </tr>
@@ -219,6 +219,12 @@
         <p>Wähle ein weiteres Fahrzeug aus, um einen Vergleich zu sehen.</p>
       </div>
 
+      <!-- Gehalt Balkendiagramm -->
+      <GehaltsVergleichsChart
+        :vergleichsErgebnisse="vergleichsErgebnisse"
+        :formatCurrency="formatCurrency"
+      />
+
       <div class="explanation">
         <h3>Erklärung</h3>
         <p>
@@ -262,12 +268,19 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useCalculatorStore } from '@/stores/calculator'
+import GehaltsVergleichsChart from './GehaltsVergleichsChart.vue'
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js'
+
+// Register required Chart.js components
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 const store = useCalculatorStore()
 
 // Get user data and comparison results from store
 const userData = computed(() => store.userData)
 const vergleichsErgebnisse = computed(() => store.vergleichsErgebnisse)
+
+// Chart data and options are moved to GehaltsVergleichsChart.vue component
 
 // Number of months for total cost calculation
 const selectedMonths = ref<number>(36) // Default: 36 months
@@ -696,5 +709,28 @@ td.selected-for-comparison .comparison-selection {
 
 .explanation p:last-child {
   margin-bottom: 0;
+}
+
+.salary-chart-container {
+  background-color: #fff;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.salary-chart-container h3 {
+  margin-top: 0;
+  margin-bottom: 1.2rem;
+  color: #333;
+  text-align: center;
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+  margin: 0 auto;
+  max-width: 900px;
 }
 </style>

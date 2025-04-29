@@ -158,90 +158,210 @@ export const useCalculatorStore = defineStore('calculator', () => {
     }
   }
 
-  // Calculate income tax (Lohnsteuer)
+  // Calculate income tax (Lohnsteuer) - gemäß Programmablaufplan (PAP) 2025
   const calculateEinkommensteuer = (brutto: number, customUserData?: UserData): number => {
     if (brutto <= 0) return 0;
 
     // Use provided custom userData or the default store userData
     const data = customUserData || userData.value;
 
-    // 2025 parameters
-    const grundfreibetrag = 12084; // Basic tax-free amount for 2025
 
-    // Convert monthly gross to annual for tax calculation
-    const bruttoJaehrlich = brutto * 12;
 
-    // Apply monthly tax-free amount
-    const jaehrlicherFreibetrag = data.monatsfreibetrag * 12;
+    // Konstanten nach PAP 2025
+    const GRUNDFREIBETRAG = 11784; // Grundfreibetrag in Euro
+    const ANP_WERT = 1230;  // Arbeitnehmer-Pauschbetrag in Euro
+    const SAP_WERT = 36;    // Sonderausgaben-Pauschbetrag in Euro
+    const EFA_WERT = 4260;  // Entlastungsbetrag für Alleinerziehende
 
-    // Calculate taxable income
-    const zuVersteuerndesEinkommen = Math.max(0, (bruttoJaehrlich - grundfreibetrag - jaehrlicherFreibetrag));
+    // 1. Jahreswerte ermitteln (monatliche Werte auf Jahreswerte hochrechnen)
+    const RE4 = Math.round(brutto * 100); // Bruttolohn in Cent
+    const JRE4 = RE4 * 12;  // Jahresbruttolohn in Cent
+    const JFREIB = data.monatsfreibetrag * 100 * 12; // Freibeträge in Cent/Jahr
 
-    // Calculate income tax based on 2025 tax brackets and tax class
-    let einkommensteuerJahr = 0;
-    const steuerklasse = data.steuerklasse;
+    // 2. Ermittlung der Freibeträge
+    let ANP = 0;  // Arbeitnehmer-Pauschbetrag
+    let SAP = 0;  // Sonderausgaben-Pauschbetrag
+    // Keine Kinderfreibeträge mehr für die Lohnsteuerberechnung gemäß BMF:
+    // "Die Freibeträge für Kinder wirken sich beim Lohnsteuerabzug auf die Höhe des
+    // Solidaritätszuschlags und der Kirchensteuer aus. Auf die Höhe der Lohnsteuer
+    // haben diese Freibeträge keine Auswirkung."
+    let EFA = 0;  // Entlastungsbetrag für Alleinerziehende in Steuerklasse 2
+    let KZTAB = 1; // Kennzahl für die Einkommensteuer-Tabellenart (1 = Grundtabelle, 2 = Splittingtabelle)
 
-    // Special case for tax class 3 (married, splitting)
-    if (steuerklasse === 3) {
-      // Apply splitting method (half income, calculate tax, double result)
-      let E = zuVersteuerndesEinkommen / 2; // Splitting
+    // ANP ist der Arbeitnehmer-Pauschbetrag (max. 1230€)
+    ANP = ANP_WERT;
 
-      let est = 0;
-      if (E <= 0) {
-        est = 0;
-      } else if (E <= 15999) {
-        // Calculate using formula for first bracket - grundfreibetrag is already subtracted in zuVersteuerndesEinkommen
-        const y = E / 10000;
-        est = (979.18 * y + 1755) * y;
-      } else if (E <= 62809) {
-        const z = (E - 16000) / 10000;
-        est = (192.59 * z + 2239) * z + 1068;
-      } else if (E <= 277825) {
-        est = 0.42 * E - 9136;
-      } else {
-        est = 0.45 * E - 17374;
-      }
+    // Steuerklassen-spezifische Freibeträge setzen
+    switch (data.steuerklasse) {
+      case 1:
+        SAP = SAP_WERT;
+        break;
+      case 2:
+        EFA = EFA_WERT; // Entlastungsbetrag für Alleinerziehende
+        SAP = SAP_WERT;
+        break;
+      case 3:
+        KZTAB = 2; // Splittingtabelle für SK 3
+        SAP = SAP_WERT;
+        break;
+      case 4:
+        SAP = SAP_WERT;
+        break;
+      case 5:
+        SAP = SAP_WERT;
+        break;
+      case 6:
+        // Keine speziellen Freibeträge für SK 6
+        break;
+    }
 
-      einkommensteuerJahr = est * 2; // Double the tax for splitting
+    // 3. Ermittlung der Vorsorgepauschale nach PAP 2025
+    let VSP1 = 0; // Vorsorgepauschale für Rentenversicherung
+    let VSP2 = 0; // Vorsorgepauschale für sonstige Vorsorgeaufwendungen (Höchstbetrag)
+    let VSP3 = 0; // Vorsorgepauschale für Kranken- und Pflegeversicherung
+
+    // 3.1 Berechnung von VSP1 (Rentenversicherung)
+    const BBGRV = 96600; // Beitragsbemessungsgrenze Rentenversicherung 2025
+    const RVSATZAN = 0.093; // Arbeitnehmerbeitragssatz zur Rentenversicherung 2025
+    const ZRE4VP = Math.min(BBGRV, JRE4/100); // Auf Jahreswert hochgerechnetes RE4 für VSP-Berechnung
+
+    VSP1 = Math.floor(ZRE4VP * RVSATZAN * 100) / 100; // Auf 2 Nachkommastellen abgerundet
+
+    // 3.2 Berechnung VSP2 (sonstige Vorsorgeaufwendungen - Höchstbetrag abhängig von Steuerklasse)
+    VSP2 = Math.min((ZRE4VP * 0.12), (data.steuerklasse == 3 ? 3000 : 1900));
+    VSP2 = Math.floor(VSP2 * 100) / 100; // Auf 2 Nachkommastellen abgerundet
+
+    // 3.3 Berechnung VSP3 (Kranken- und Pflegeversicherung)
+    const BBGKVPV = 66150; // Beitragsbemessungsgrenze Kranken-/Pflegeversicherung 2025
+    const KVSATZAN = (data.vorsorgeaufwendungen.krankenversicherung + data.vorsorgeaufwendungen.zusatzbeitragssatz) / 100 / 2;
+
+    // Pflegeversicherung - gestaffelt nach Anzahl der Kinder
+    let PVSATZ = 0.018; // Standardsatz 1,8%
+
+    // Falls Kinder vorhanden, reduzierter Satz
+    if (data.kinderfreibetraege > 0) {
+      if (data.kinderfreibetraege >= 0 && data.kinderfreibetraege < 1.5) PVSATZ = 0.017;
+      else if (data.kinderfreibetraege >= 1.5 && data.kinderfreibetraege < 2.5) PVSATZ = 0.0145;
+      else if (data.kinderfreibetraege >= 2.5 && data.kinderfreibetraege < 3.5) PVSATZ = 0.012;
+      else if (data.kinderfreibetraege >= 3.5 && data.kinderfreibetraege < 4.5) PVSATZ = 0.0095;
+      else PVSATZ = 0.007; // 4.5 oder mehr Kinder
     } else {
-      // For other tax classes, use a simplified approximation
-      let basisSteuer = 0;
-
-      if (zuVersteuerndesEinkommen <= 0) {
-        basisSteuer = 0;
-      } else if (zuVersteuerndesEinkommen <= 15999) {
-        // grundfreibetrag is already subtracted in zuVersteuerndesEinkommen
-        const y = zuVersteuerndesEinkommen / 10000;
-        basisSteuer = (979.18 * y + 1755) * y;
-      } else if (zuVersteuerndesEinkommen <= 62809) {
-        const z = (zuVersteuerndesEinkommen - 16000) / 10000;
-        basisSteuer = (192.59 * z + 2239) * z + 1068;
-      } else if (zuVersteuerndesEinkommen <= 277825) {
-        basisSteuer = 0.42 * zuVersteuerndesEinkommen - 9136;
-      } else {
-        basisSteuer = 0.45 * zuVersteuerndesEinkommen - 17374;
-      }
-
-      // Apply tax class factors
-      switch (steuerklasse) {
-        case 1:
-        case 4:
-          einkommensteuerJahr = basisSteuer;
-          break;
-        case 2:
-          einkommensteuerJahr = basisSteuer * 0.90; // Relief for single parents
-          break;
-        case 5:
-          einkommensteuerJahr = basisSteuer * 1.35; // Higher tax for secondary earner
-          break;
-        case 6:
-          einkommensteuerJahr = Math.max(zuVersteuerndesEinkommen * 0.27, basisSteuer * 1.15); // Secondary job
-          break;
+      // Kinderlos über 23 Jahre
+      if ((2025 - data.geburtsjahr) > 23) {
+        PVSATZ = 0.023;
       }
     }
 
-    // Return monthly income tax
-    return einkommensteuerJahr / 12;
+    // Zusätzlicher Beitrag für Sachsen
+    if (data.bundesland === 'Sachsen') {
+      PVSATZ += 0.005;
+    }
+
+    const KVPVBeitrag = Math.min(BBGKVPV, ZRE4VP) * (KVSATZAN + PVSATZ);
+    VSP3 = Math.floor(KVPVBeitrag * 100) / 100; // 2 Nachkommastellen abgerundet
+
+    // 3.4 Gesamte Vorsorgepauschale ermitteln
+    const VSPN = Math.ceil(VSP1 + VSP2); // VSP1 + VSP2 wird aufgerundet
+    const VSP = Math.max(VSP3 + VSP1, VSPN); // Größerer Wert aus (VSP3+VSP1) und VSPN    // 4. Ermittlung des zu versteuernden Einkommens (ZVE)
+    const ZRE4 = Math.max(0, JRE4/100 - JFREIB/100); // Entspricht ZRE4 im PAP, jährliches RE4 nach Abzug der Freibeträge
+
+    // Summe der festen Tabellenfreibeträge (ZTABFB) berechnen
+    const ZTABFB = EFA + ANP + SAP;
+
+    // ZVE gemäß PAP (ohne Kinderfreibeträge gemäß BMF)
+    const ZVE = Math.max(0, ZRE4 - ZTABFB - VSP);
+
+    // 5. Berechnung der Lohnsteuer nach dem Einkommensteuertarif
+    let X = 0;
+    let ST = 0;
+
+    if (ZVE < 1) {
+      ST = 0; // Keine Steuer unter 1€
+    } else {
+      // Berechnung X abhängig von KZTAB (1=Grundtabelle, 2=Splittingtabelle)
+      X = Math.floor(ZVE / KZTAB);
+
+      // Steuerberechnung nach dem Einkommensteuertarif 2025
+      if (X <= 0) {
+        ST = 0;
+      } else if (X <= 17005) {
+        // Erste Progressionszone
+        const y = (X - GRUNDFREIBETRAG) / 10000;
+        ST = Math.floor((954.8 * y + 1400) * y);
+      } else if (X <= 66760) {
+        // Zweite Progressionszone
+        const y = (X - 17005) / 10000;
+        ST = Math.floor((181.19 * y + 2397) * y + 991.21);
+      } else if (X <= 277825) {
+        // Dritte Progressionszone
+        ST = Math.floor(0.42 * X - 10636.31);
+      } else {
+        // Vierte Progressionszone
+        ST = Math.floor(0.45 * X - 18971.06);
+      }
+
+      // Steuerberechnung für Steuerklasse 5 oder 6
+      if (data.steuerklasse >= 5) {
+        // Mindeststeuersatz für SK 5/6
+        const MIST = Math.floor(X * 0.14);
+
+        // Spezielle Berechnung für SK 5/6
+        let ST1 = 0;
+        let ST2 = 0;
+
+        // Berechnung für 1,25 * X
+        const X1 = Math.floor(X * 1.25);
+
+        if (X1 <= 0) {
+          ST1 = 0;
+        } else if (X1 <= 17005) {
+          const y = (X1 - GRUNDFREIBETRAG) / 10000;
+          ST1 = Math.floor((954.8 * y + 1400) * y);
+        } else if (X1 <= 66760) {
+          const y = (X1 - 17005) / 10000;
+          ST1 = Math.floor((181.19 * y + 2397) * y + 991.21);
+        } else if (X1 <= 277825) {
+          ST1 = Math.floor(0.42 * X1 - 10636.31);
+        } else {
+          ST1 = Math.floor(0.45 * X1 - 18971.06);
+        }
+
+        // Berechnung für 0,75 * X
+        const X2 = Math.floor(X * 0.75);
+
+        if (X2 <= 0) {
+          ST2 = 0;
+        } else if (X2 <= 17005) {
+          const y = (X2 - GRUNDFREIBETRAG) / 10000;
+          ST2 = Math.floor((954.8 * y + 1400) * y);
+        } else if (X2 <= 66760) {
+          const y = (X2 - 17005) / 10000;
+          ST2 = Math.floor((181.19 * y + 2397) * y + 991.21);
+        } else if (X2 <= 277825) {
+          ST2 = Math.floor(0.42 * X2 - 10636.31);
+        } else {
+          ST2 = Math.floor(0.45 * X2 - 18971.06);
+        }
+
+        const DIFF = (ST1 - ST2) * 2;
+
+        // Wähle den höheren Wert
+        ST = Math.max(MIST, DIFF);
+      }
+
+      // Bei Steuerklasse 2 (Alleinerziehende) Steuervergünstigung berechnen
+      if (data.steuerklasse === 2) {
+        // 10% Entlastung für Alleinerziehende
+        const entlastung = Math.floor(ST * 0.1);
+        ST -= entlastung;
+      }
+    }
+
+    // Bei Splittingverfahren (KZTAB = 2, Steuerklasse 3) mit Faktor multiplizieren
+    ST = Math.floor(ST * KZTAB);
+
+    // 6. Jahreslohnsteuer in Monatslohnsteuer umrechnen
+    return ST / 12;
   }
 
   // Calculate church tax (Kirchensteuer)
@@ -251,14 +371,47 @@ export const useCalculatorStore = defineStore('calculator', () => {
 
     if (!data.kirchensteuer) return 0;
 
+    // Kirchensteuersatz je nach Bundesland
     const kirchensteuerSatz = data.bundesland === 'Bayern' ||
                              data.bundesland === 'Baden-Württemberg' ? 0.08 : 0.09;
 
-    return einkommensteuer * kirchensteuerSatz;
+    // Bei der Kirchensteuer werden Kinderfreibeträge berücksichtigt
+    // Gemäß BMF wirken sich die Kinderfreibeträge auf die Kirchensteuer aus
+    const kinderfreibetraege = data.kinderfreibetraege || 0;
+
+    // Berechnung der fiktiven Kinderfreibetragsreduktion für die Kirchensteuer
+    // Je nach Steuerklasse werden unterschiedliche Kinderfreibeträge angesetzt
+    let kinderFreibetragWert = 0;
+
+    // Kinderfreibeträge werden bei SK 1-4 berücksichtigt
+    // Unterstützt auch Kommazahlen (z.B. 1.5 Kinderfreibeträge)
+    if (data.steuerklasse >= 1 && data.steuerklasse <= 3) {
+      // Voller Kinderfreibetrag für SK 1-3: 9540€ pro Kind
+      kinderFreibetragWert = kinderfreibetraege * 9540;
+    } else if (data.steuerklasse === 4) {
+      // Halber Kinderfreibetrag für SK 4: 4770€ pro Kind
+      kinderFreibetragWert = kinderfreibetraege * 4770;
+    }
+
+    // Für SK 5-6 keine Kinderfreibeträge
+
+    // Reduktionsfaktor für die Kirchensteuer berechnen
+    // Je höher der Kinderfreibetrag, desto niedriger die Kirchensteuer
+    // Vereinfachte Berechnung: Reduction = KFB / (Annual Income * 10)
+    const annualIncome = einkommensteuer * 12;
+    let kfbReduction = 0;
+
+    if (annualIncome > 0 && kinderFreibetragWert > 0) {
+      // Reduktionsfaktor berechnen - begrenzt auf max. 30%
+      kfbReduction = Math.min(0.3, kinderFreibetragWert / (annualIncome * 10));
+    }
+
+    // Reduzierte Kirchensteuer zurückgeben
+    return einkommensteuer * kirchensteuerSatz * (1 - kfbReduction);
   }
 
   // Calculate solidarity surcharge (Solidaritätszuschlag) - no longer applicable as of 2025
-  const calculateSolidaritaetszuschlag = (einkommensteuer: number): number => {
+  const calculateSolidaritaetszuschlag = (): number => {
     // Solidaritätszuschlag has been abolished
     return 0;
   }
@@ -300,16 +453,16 @@ export const useCalculatorStore = defineStore('calculator', () => {
 
     if (hasBenifit) {
       // With children
-      if (data.kinderfreibetraege === 1) {
-        pflegeversicherungSatz = 0.017; // 1 child
-      } else if (data.kinderfreibetraege === 2) {
-        pflegeversicherungSatz = 0.0145; // 2 children
-      } else if (data.kinderfreibetraege === 3) {
-        pflegeversicherungSatz = 0.012; // 3 children
-      } else if (data.kinderfreibetraege === 4) {
-        pflegeversicherungSatz = 0.0095; // 4 children
-      } else if (data.kinderfreibetraege >= 5) {
-        pflegeversicherungSatz = 0.007; // 5 or more children
+      if (data.kinderfreibetraege >= 0 && data.kinderfreibetraege < 1.5) {
+        pflegeversicherungSatz = 0.017; // Up to 1.5 children
+      } else if (data.kinderfreibetraege >= 1.5 && data.kinderfreibetraege < 2.5) {
+        pflegeversicherungSatz = 0.0145; // 1.5 to 2.5 children
+      } else if (data.kinderfreibetraege >= 2.5 && data.kinderfreibetraege < 3.5) {
+        pflegeversicherungSatz = 0.012; // 2.5 to 3.5 children
+      } else if (data.kinderfreibetraege >= 3.5 && data.kinderfreibetraege < 4.5) {
+        pflegeversicherungSatz = 0.0095; // 3.5 to 4.5 children
+      } else if (data.kinderfreibetraege >= 4.5) {
+        pflegeversicherungSatz = 0.007; // 4.5 or more children
       }
     } else {
       // No children - check age
@@ -400,43 +553,51 @@ export const useCalculatorStore = defineStore('calculator', () => {
       const basisBetrag = Math.max(0, car.bruttolistenpreis - freigrenze);
       return basisBetrag * (prozentsatz / 100); // Convert percentage to decimal
     }
-  }
-
-  // Calculate full comparison result for a car
+  }  // Calculate full comparison result for a car
   const calculateDienstwagenVergleich = (car: DienstwagenData): DienstwagenVergleich => {
     const bruttoMonatsgehalt = userData.value.bruttoMonatsgehalt
     const geldwerterVorteil = calculateGeldwerterVorteil(car)
     const eigenanteilBetrag = calculateEigenanteil(car)
-    console.log('Eigenanteil:', eigenanteilBetrag)
-    console.log('Geldwerter Vorteil:', geldwerterVorteil)
-    console.log('Brutto Monatsgehalt:', bruttoMonatsgehalt)
-    // Adjust gross salary by subtracting the employee contribution
-    const adjustedBruttoMonatsgehalt = bruttoMonatsgehalt - eigenanteilBetrag
-    console.log('Adjusted Brutto Monatsgehalt:', adjustedBruttoMonatsgehalt)
-    // Geldwerter Vorteil is only subject to income tax, not social security
-    // So we calculate taxes with it but don't add it to the adjusted gross for social security calculations
+
+    // Berechnung ohne Dienstwagen als Basiswert (reguläres Nettogehalt)
     const nettoOhneDienstwagen = calculateNettoOhneDienstwagen(bruttoMonatsgehalt)
-    console.log('Netto ohne Dienstwagen:', nettoOhneDienstwagen)
-    // Only apply income tax to geldwerter Vorteil, not social security
-    const steuerklasseFaktor = {
-      1: 0.36, 2: 0.32, 3: 0.28, 4: 0.36, 5: 0.42, 6: 0.45
-    }[userData.value.steuerklasse]
 
-    const steuerbelastung = geldwerterVorteil * steuerklasseFaktor
+    // Gemäß dem Lohnsteuer-Programmablaufplan 2025:
+    // 1. Eigenanteil wird vom Bruttogehalt abgezogen
+    const adjustedBruttoMonatsgehalt = bruttoMonatsgehalt - eigenanteilBetrag
 
-    // Since Geldwerter Vorteil is not subject to social security contributions
+    // 2. Geldwerter Vorteil erhöht das zu versteuernde Einkommen als geldwerter Vorteil
+    //    Sozialversicherungsbeiträge werden auf das um den Eigenanteil verminderte Gehalt berechnet
+    const sozialversicherungBeitraege = calculateSozialversicherung(adjustedBruttoMonatsgehalt).gesamt
+
+    // 3. Berechnung der Lohnsteuer auf das angepasste Brutto plus geldwerten Vorteil
+    // Im Programmablaufplan wird der geldwerte Vorteil zum steuerpflichtigen Einkommen addiert
+    const lohnsteuerMitDienstwagen = calculateEinkommensteuer(adjustedBruttoMonatsgehalt + geldwerterVorteil)
+    const kirchensteuerMitDienstwagen = calculateKirchensteuer(lohnsteuerMitDienstwagen)
+
+    // 4. Berechnung des Nettogehalts mit Dienstwagen
+    const nettoMitDienstwagen = adjustedBruttoMonatsgehalt - lohnsteuerMitDienstwagen - kirchensteuerMitDienstwagen - sozialversicherungBeitraege
+
+    // Ermittlung der Steuerbelastung durch den geldwerten Vorteil
+    // Berechne Steuern ohne den geldwerten Vorteil als Vergleich
+    const lohnsteuerOhneDienstwagen = calculateEinkommensteuer(adjustedBruttoMonatsgehalt)
+    const kirchensteuerOhneDienstwagen = calculateKirchensteuer(lohnsteuerOhneDienstwagen)
+
+    // Differenz der Steuern mit und ohne geldwerten Vorteil
+    const steuerbelastung = lohnsteuerMitDienstwagen - lohnsteuerOhneDienstwagen
+    const kirchensteuerBelastung = kirchensteuerMitDienstwagen - kirchensteuerOhneDienstwagen
+    const gesamteSteuerbelastung = steuerbelastung + kirchensteuerBelastung
+
+    // Nach Bundesfinanzhof fallen keine Sozialversicherungsbeiträge auf den geldwerten Vorteil an
     const sozialversicherungBelastung = 0
 
-    // Calculate net salary with the adjusted gross (without Eigenanteil)
-    const nettoMitDienstwagen = calculateNettoOhneDienstwagen(adjustedBruttoMonatsgehalt) - steuerbelastung
-    console.log('Netto mit Dienstwagen:', nettoMitDienstwagen)
     return {
       dienstwagen: car,
       ergebnis: {
         nettoOhneDienstwagen,
         nettoDifferenz: nettoMitDienstwagen - nettoOhneDienstwagen,
         geldwerterVorteil,
-        steuerbelastung,
+        steuerbelastung: gesamteSteuerbelastung,
         sozialversicherungBelastung,
         eigenanteilBetrag
       }
